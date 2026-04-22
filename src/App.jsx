@@ -175,6 +175,23 @@ export default function App() {
   const [newPwError, setNewPwError] = useState("");
   const [newPwSuccess, setNewPwSuccess] = useState(false);
   const [notifBadge, setNotifBadge] = useState([]);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [showInstall, setShowInstall] = useState(false);
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      setShowInstall(true);
+    });
+  }, []);
+
+  async function handleInstall() {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') setShowInstall(false);
+  }
 
   // Load storage
   useEffect(() => {
