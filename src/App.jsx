@@ -155,6 +155,7 @@ export default function App() {
   const [mgrUnlocked, setMgrUnlocked]   = useState(false);
   const [mgrPwInput, setMgrPwInput]     = useState("");
   const [mgrPwError, setMgrPwError]     = useState(false);
+  const [mgrRememberMe, setMgrRememberMe] = useState(false);
   const [requests, setRequests]   = useState([]);
   const [plannings, setPlannings] = useState(() => {
     const p = {}; EMPLOYEES_DEFAULT.forEach(e => p[e.name] = { A: [...DEFAULT_PLANNING], B: [...DEFAULT_PLANNING] }); return p;
@@ -184,7 +185,7 @@ export default function App() {
       try { const r = await window.storage.get("pharma_requests");   if (r) setRequests(JSON.parse(r.value)); } catch {}
       try { const p = await window.storage.get("pharma_plannings");  if (p) setPlannings(JSON.parse(p.value)); } catch {}
       try { const e = await window.storage.get("pharma_employees");  if (e) setEmployees(JSON.parse(e.value)); } catch {}
-      // Remember me
+      // Remember me employee
       try {
         const rm = await window.storage.get("pharma_remember");
         if (rm) {
@@ -192,6 +193,11 @@ export default function App() {
           const emp = EMPLOYEES_DEFAULT.find(e => e.name === data.name);
           if (emp) { setSelEmp(emp); setView("employee"); }
         }
+      } catch {}
+      // Remember me manager
+      try {
+        const rm2 = await window.storage.get("pharma_remember_mgr");
+        if (rm2) { setMgrUnlocked(true); setView("manager"); }
       } catch {}
     })();
   }, []);
@@ -582,7 +588,12 @@ export default function App() {
 
   // ── MANAGER LOCK ────────────────────────────────────────────────────────
   if (view==="manager" && !mgrUnlocked) {
-    const tryMgr = () => { if (mgrPwInput===MANAGER_PASSWORD) { setMgrUnlocked(true); setMgrPwInput(""); } else setMgrPwError(true); };
+    const tryMgr = async () => {
+      if (mgrPwInput===MANAGER_PASSWORD) {
+        setMgrUnlocked(true); setMgrPwInput("");
+        if (mgrRememberMe) { try { await window.storage.set("pharma_remember_mgr", "true"); } catch {} }
+      } else setMgrPwError(true);
+    };
     return (
       <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0F2027,#203A43,#2C5364)", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Georgia',serif", padding:"24px" }}>
         <div style={{ background:"rgba(255,255,255,0.06)", backdropFilter:"blur(20px)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:"20px", padding:"40px", width:"100%", maxWidth:"340px" }}>
@@ -594,6 +605,10 @@ export default function App() {
           <input type="password" value={mgrPwInput} onChange={e=>{ setMgrPwInput(e.target.value); setMgrPwError(false); }} onKeyDown={e=>e.key==="Enter"&&tryMgr()} placeholder="Mot de passe..."
             style={{ width:"100%", padding:"13px", background:"rgba(255,255,255,0.08)", border:`1px solid ${mgrPwError?"#E85D75":"rgba(255,255,255,0.15)"}`, borderRadius:"10px", color:"white", fontSize:"15px", fontFamily:"inherit", marginBottom:"10px", boxSizing:"border-box", outline:"none" }} />
           {mgrPwError && <div style={{ color:"#E85D75", fontSize:"13px", marginBottom:"10px" }}>Mot de passe incorrect</div>}
+          <label style={{ display:"flex", alignItems:"center", gap:"8px", fontSize:"13px", color:"#94B4C8", marginBottom:"14px", cursor:"pointer" }}>
+            <input type="checkbox" checked={mgrRememberMe} onChange={e=>setMgrRememberMe(e.target.checked)} />
+            Se souvenir de moi
+          </label>
           <button onClick={tryMgr} style={{ width:"100%", padding:"13px", background:"linear-gradient(135deg,#E8D5A3,#C9A84C)", border:"none", borderRadius:"10px", fontSize:"15px", fontWeight:"700", cursor:"pointer", color:"#1a1a1a", fontFamily:"inherit" }}>Accéder</button>
         </div>
       </div>
@@ -626,7 +641,7 @@ export default function App() {
           </div>
           <div style={{ display:"flex", gap:"10px", alignItems:"center" }}>
             {pendingCount > 0 && <span style={{ background:"#E85D75", color:"white", borderRadius:"20px", padding:"4px 12px", fontSize:"13px", fontWeight:"700" }}>{pendingCount} en attente</span>}
-            <button onClick={()=>{ setMgrUnlocked(false); setView("home"); }}
+            <button onClick={async()=>{ setMgrUnlocked(false); setView("home"); try { await window.storage.delete("pharma_remember_mgr"); } catch {} }}
               style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.2)", color:"white", borderRadius:"8px", padding:"7px 14px", cursor:"pointer", fontSize:"13px", fontFamily:"inherit" }}>
               Déconnexion
             </button>
