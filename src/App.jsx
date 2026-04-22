@@ -86,19 +86,13 @@ function calcCP(startDate, endDate, workedDays) {
   return count;
 }
 
-// Solde CP : quota - CP pris sur la période mai→avril en cours
-function getSolde(empName, requests, plannings) {
-  const now = new Date();
-  const periodeStart = now.getMonth() >= 4
-    ? `${now.getFullYear()}-05-01`
-    : `${now.getFullYear()-1}-05-01`;
-  const periodeEnd = now.getMonth() >= 4
-    ? `${now.getFullYear()+1}-04-30`
-    : `${now.getFullYear()}-04-30`;
+// Solde CP : base manuelle - CP pris approuvés
+function getSolde(empName, requests, plannings, soldesManuel) {
+  const base = soldesManuel?.[empName] ?? CP_QUOTA;
   const pris = requests
-    .filter(r => r.employee === empName && r.status === "approved" && r.startDate >= periodeStart && r.endDate <= periodeEnd)
+    .filter(r => r.employee === empName && r.status === "approved")
     .reduce((s,r) => s+(r.cp||0), 0);
-  return CP_QUOTA - pris;
+  return Math.max(0, base - pris);
 }
 
 // Semaine A/B : basé sur le numéro de semaine ISO
@@ -156,6 +150,9 @@ export default function App() {
   const [mgrPwInput, setMgrPwInput]     = useState("");
   const [mgrPwError, setMgrPwError]     = useState(false);
   const [mgrRememberMe, setMgrRememberMe] = useState(false);
+  const [soldesManuel, setSoldesManuel] = useState(() => {
+    const s = {}; EMPLOYEES_DEFAULT.forEach(e => s[e.name] = CP_QUOTA); return s;
+  });
   const [requests, setRequests]   = useState([]);
   const [plannings, setPlannings] = useState(() => {
     const p = {}; EMPLOYEES_DEFAULT.forEach(e => p[e.name] = { A: [...DEFAULT_PLANNING], B: [...DEFAULT_PLANNING] }); return p;
@@ -185,6 +182,7 @@ export default function App() {
       try { const r = await window.storage.get("pharma_requests");   if (r) setRequests(JSON.parse(r.value)); } catch {}
       try { const p = await window.storage.get("pharma_plannings");  if (p) setPlannings(JSON.parse(p.value)); } catch {}
       try { const e = await window.storage.get("pharma_employees");  if (e) setEmployees(JSON.parse(e.value)); } catch {}
+      try { const s = await window.storage.get("pharma_soldes"); if (s) setSoldesManuel(JSON.parse(s.value)); } catch {}
       // Remember me employee
       try {
         const rm = await window.storage.get("pharma_remember");
@@ -205,6 +203,7 @@ export default function App() {
   const saveRequests  = useCallback(async (r) => { setRequests(r);  try { await window.storage.set("pharma_requests",  JSON.stringify(r)); } catch {} }, []);
   const savePlannings = useCallback(async (p) => { setPlannings(p); try { await window.storage.set("pharma_plannings", JSON.stringify(p)); } catch {} }, []);
   const saveEmployees = useCallback(async (e) => { setEmployees(e); try { await window.storage.set("pharma_employees", JSON.stringify(e)); } catch {} }, []);
+  const saveSoldes = useCallback(async (s) => { setSoldesManuel(s); try { await window.storage.set("pharma_soldes", JSON.stringify(s)); } catch {} }, []);
 
   function getEmpPlanning(name, date) {
     const plan = plannings[name] || { A: DEFAULT_PLANNING, B: DEFAULT_PLANNING };
@@ -238,7 +237,7 @@ export default function App() {
     if (form.endDate < form.startDate) return setFormError("La date de fin doit être après le début.");
     const planning = getEmpPlanning(selEmp.name, form.startDate);
     const cp = calcCP(form.startDate, form.endDate, planning);
-    const solde = getSolde(selEmp.name, requests, plannings);
+    const solde = getSolde(selEmp.name, requests, plannings, soldesManuel);
     if (cp > solde) return setFormError(`Solde insuffisant : il vous reste ${solde} jours CP.`);
 
     if (editingReq) {
@@ -305,7 +304,7 @@ export default function App() {
 
   const myRequests   = requests.filter(r => r.employee === selEmp?.name);
   const pendingCount = requests.filter(r => r.status==="pending").length;
-  const solde        = selEmp ? getSolde(selEmp.name, requests, plannings) : 0;
+  const solde        = selEmp ? getSolde(selEmp.name, requests, plannings, soldesManuel) : 0;
 
   function getCalendarDays() {
     const fd = new Date(calYear, calMonth, 1).getDay();
@@ -652,7 +651,7 @@ export default function App() {
       {/* Tabs */}
       <div style={{ background:"white", borderBottom:"1px solid #E8E4DC", overflowX:"auto" }}>
         <div style={{ maxWidth:"900px", margin:"0 auto", display:"flex" }}>
-          {[["requests","📋 Demandes"],["calendar","📅 Calendrier"],["recap","📊 Récap"],["planning","⚙️ Plannings"]].map(([tab,label]) => (
+          {[["requests","📋 Demandes"],["calendar","📅 Calendrier"],["recap","📊 Récap"],["planning","⚙️ Plannings"],["soldes","🏦 Soldes CP"]].map(([tab,label]) => (
             <button key={tab} onClick={()=>setMgrTab(tab)}
               style={{ padding:"14px 18px", border:"none", borderBottom:`3px solid ${mgrTab===tab?"#2C5364":"transparent"}`, background:"none", cursor:"pointer", fontSize:"13px", fontWeight:"600", fontFamily:"inherit", color:mgrTab===tab?"#1a2e38":"#94B4C8", whiteSpace:"nowrap" }}>
               {label}
@@ -793,6 +792,40 @@ export default function App() {
             </div>
             <div style={{ marginTop:"16px", padding:"12px 16px", background:"#F0F4F8", borderRadius:"10px", fontSize:"13px", color:"#5A7A8A" }}>
               <strong>Total {MONTH_NAMES[recapMonth]} :</strong> {recap.reduce((s,e)=>s+e.total,0)} jours CP pris
+            </div>
+          </div>
+        )}
+
+        {/* ── SOLDES CP ── */}
+        {mgrTab==="soldes" && (
+          <div style={{ background:"white", borderRadius:"16px", padding:"22px", boxShadow:"0 2px 12px rgba(0,0,0,0.06)" }}>
+            <h3 style={{ margin:"0 0 6px", color:"#1a2e38", fontSize:"17px" }}>🏦 Soldes de départ CP</h3>
+            <p style={{ color:"#94B4C8", fontSize:"13px", marginBottom:"22px" }}>Définissez le nombre de jours CP de départ pour chaque employé. L'app déduira ensuite automatiquement les congés approuvés.</p>
+            <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
+              {employees.map((emp,i) => {
+                const pris = requests.filter(r=>r.employee===emp.name&&r.status==="approved").reduce((s,r)=>s+(r.cp||0),0);
+                const base = soldesManuel[emp.name] ?? CP_QUOTA;
+                const restant = Math.max(0, base - pris);
+                return (
+                  <div key={emp.name} style={{ display:"flex", alignItems:"center", gap:"14px", padding:"16px", background:"#F9F8F6", borderRadius:"12px", borderLeft:`4px solid ${EMPLOYEE_COLORS[i]}` }}>
+                    <div style={{ width:"40px", height:"40px", borderRadius:"50%", background:EMPLOYEE_COLORS[i], display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontSize:"14px", fontWeight:"700", flexShrink:0 }}>{initials(emp.name)}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:"700", color:"#1a2e38", fontSize:"14px", marginBottom:"4px" }}>{emp.name}</div>
+                      <div style={{ fontSize:"12px", color:"#6B8A99" }}>Pris : <strong>{pris} j</strong> · Restant : <strong style={{ color: restant < 5 ? "#E85D75" : "#16A34A" }}>{restant} j</strong></div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:"8px", flexShrink:0 }}>
+                      <label style={{ fontSize:"12px", color:"#5A7A8A", fontWeight:"600" }}>Solde de départ :</label>
+                      <input type="number" min="0" max="60" value={base}
+                        onChange={e => saveSoldes({ ...soldesManuel, [emp.name]: parseInt(e.target.value)||0 })}
+                        style={{ width:"60px", padding:"8px", border:"1px solid #E2DDD6", borderRadius:"8px", fontSize:"15px", fontWeight:"700", textAlign:"center", color:"#1a2e38", fontFamily:"inherit" }} />
+                      <span style={{ fontSize:"12px", color:"#94B4C8" }}>jours</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ marginTop:"16px", padding:"12px 16px", background:"#EBF5FB", borderRadius:"10px", fontSize:"13px", color:"#2980B9" }}>
+              💡 Le solde de départ correspond aux jours acquis au début de la période (1er mai). Modifiez-le si des congés ont déjà été pris avant l'utilisation de l'app.
             </div>
           </div>
         )}
