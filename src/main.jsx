@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 
-// Polyfill window.storage to use localStorage (for standalone deployment)
+// Polyfill window.storage to use localStorage
 window.storage = {
   get: async (key) => {
     const value = localStorage.getItem(key);
@@ -22,6 +22,13 @@ window.storage = {
     return { keys };
   }
 };
+
+// Register service worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
