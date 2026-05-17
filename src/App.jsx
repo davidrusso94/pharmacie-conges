@@ -142,6 +142,14 @@ export default function App() {
   const [empPwError,setEmpPwError]   = useState(false);
   const [pendingLogin,setPendingLogin] = useState(null);
   const [rememberMe,setRememberMe]   = useState(false);
+  const [forgotMode,setForgotMode]   = useState(false);
+  const [forgotStep,setForgotStep]   = useState(1); // 1=email, 2=code, 3=newpw
+  const [forgotCode,setForgotCode]   = useState("");
+  const [forgotCodeInput,setForgotCodeInput] = useState("");
+  const [forgotNewPw,setForgotNewPw] = useState({new1:"",new2:""});
+  const [forgotError,setForgotError] = useState("");
+  const [forgotSuccess,setForgotSuccess] = useState("");
+  const [forgotSending,setForgotSending] = useState(false);
   const [mgrUnlocked,setMgrUnlocked] = useState(false);
   const [mgrPwInput,setMgrPwInput]   = useState("");
   const [mgrPwError,setMgrPwError]   = useState(false);
@@ -169,6 +177,14 @@ export default function App() {
   const [loading,setLoading]         = useState(true);
   const [installPrompt,setInstallPrompt] = useState(null);
   const [showInstall,setShowInstall] = useState(false);
+  const [resetStep,setResetStep]     = useState(null); // null | 'choose' | 'code' | 'newpw'
+  const [resetEmp,setResetEmp]       = useState(null);
+  const [resetCode,setResetCode]     = useState("");
+  const [resetCodeInput,setResetCodeInput] = useState("");
+  const [resetNewPw,setResetNewPw]   = useState({new1:"",new2:""});
+  const [resetError,setResetError]   = useState("");
+  const [resetSuccess,setResetSuccess] = useState(false);
+  const [resetSending,setResetSending] = useState(false);
 
   useEffect(()=>{
     window.addEventListener('beforeinstallprompt',(e)=>{e.preventDefault();setInstallPrompt(e);setShowInstall(true);});
@@ -252,6 +268,20 @@ export default function App() {
     for(const r of toMark){ await dbUpdate("requests",`id=eq.${r.id}`,{notified:true}); }
     setRequests(prev=>prev.map(r=>r.employee===selEmp?.name?({...r,notified:true}):r));
     setNotifBadge([]);
+  }
+
+  async function sendForgotCode(emp) {
+    setForgotSending(true);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setForgotCode(code);
+    await sendEmail({
+      to_email: emp.email,
+      to_name: emp.name,
+      subject: "Code de réinitialisation — Pharmacie RUSSO",
+      message: `Bonjour ${emp.name},\n\nVoici votre code de réinitialisation de mot de passe :\n\n🔑 ${code}\n\nCe code est valable 10 minutes.\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez ce message.`,
+    });
+    setForgotSending(false);
+    setForgotStep(2);
   }
 
   async function submitRequest(){
@@ -344,6 +374,38 @@ export default function App() {
     setNewPw({old:"",new1:"",new2:""});
     setNewPwSuccess(true);
     setTimeout(()=>setNewPwSuccess(false),3000);
+  }
+
+  async function sendResetCode(emp) {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    setResetCode(code);
+    setResetSending(true);
+    await sendEmail({
+      to_email: emp.email, to_name: emp.name,
+      subject: "Code de réinitialisation — Pharmacie RUSSO",
+      message: `Bonjour ${emp.name},\n\nVotre code de réinitialisation est :\n\n${code}\n\nCe code est valable 10 minutes.\nSi vous n'avez pas demandé cette réinitialisation, ignorez cet email.`,
+    });
+    setResetSending(false);
+    setResetStep("code");
+  }
+
+  async function confirmResetCode() {
+    setResetError("");
+    if (resetCodeInput !== resetCode) return setResetError("Code incorrect.");
+    setResetStep("newpw");
+  }
+
+  async function confirmNewPassword() {
+    setResetError("");
+    if (resetNewPw.new1.length < 4) return setResetError("Minimum 4 caractères.");
+    if (resetNewPw.new1 !== resetNewPw.new2) return setResetError("Les mots de passe ne correspondent pas.");
+    await dbUpdate("employees", `name=eq.${encodeURIComponent(resetEmp.name)}`, {password: resetNewPw.new1});
+    setEmployees(prev => prev.map(e => e.name === resetEmp.name ? {...e, password: resetNewPw.new1} : e));
+    setResetSuccess(true);
+    setTimeout(() => {
+      setResetStep(null); setResetEmp(null); setResetCode(""); setResetCodeInput("");
+      setResetNewPw({new1:"",new2:""}); setResetSuccess(false); setResetError("");
+    }, 2000);
   }
 
   async function handleInstall(){
@@ -459,6 +521,81 @@ export default function App() {
   );
 
   // ── EMPLOYEE — password ──────────────────────────────────────────────────
+  // ── RESET PASSWORD MODAL ──────────────────────────────────────────────────
+  if(resetStep) {
+    const color = resetEmp ? EMPLOYEE_COLORS[empIdx(resetEmp.name)] : "#4F6BED";
+    return (
+      <div style={{minHeight:"100vh",background:"#F5F3EF",fontFamily:"'Georgia',serif",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}}>
+        <div style={{background:"white",borderRadius:"20px",padding:"36px",width:"100%",maxWidth:"340px",boxShadow:"0 8px 32px rgba(0,0,0,0.08)"}}>
+          <button onClick={()=>{setResetStep(null);setResetEmp(null);setResetCode("");setResetCodeInput("");setResetNewPw({new1:"",new2:""});setResetError("");}}
+            style={{background:"none",border:"none",color:"#5A7A8A",cursor:"pointer",fontSize:"13px",marginBottom:"22px",fontFamily:"inherit"}}>← Retour</button>
+
+          {resetStep==="choose" && (
+            <>
+              <h2 style={{color:"#1a2e38",fontSize:"20px",margin:"0 0 6px"}}>Mot de passe oublié</h2>
+              <p style={{color:"#94B4C8",fontSize:"13px",marginBottom:"20px"}}>Sélectionnez votre prénom pour recevoir un code par email</p>
+              <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+                {employees.map((emp,i)=>(
+                  <button key={emp.name} onClick={async()=>{setResetEmp(emp);await sendResetCode(emp);}}
+                    disabled={resetSending}
+                    style={{background:"white",border:"1px solid #E2DDD6",borderRadius:"10px",padding:"12px 16px",cursor:"pointer",textAlign:"left",fontSize:"14px",fontWeight:"600",color:"#1a2e38",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"12px"}}>
+                    <div style={{width:"32px",height:"32px",borderRadius:"50%",background:EMPLOYEE_COLORS[i],display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:"12px",fontWeight:"700"}}>{initials(emp.name)}</div>
+                    {emp.name}
+                  </button>
+                ))}
+              </div>
+              {resetSending && <div style={{color:"#94B4C8",fontSize:"13px",marginTop:"12px",textAlign:"center"}}>Envoi du code...</div>}
+            </>
+          )}
+
+          {resetStep==="code" && (
+            <>
+              <div style={{textAlign:"center",marginBottom:"24px"}}>
+                <div style={{width:"56px",height:"56px",borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:"20px",fontWeight:"700",margin:"0 auto 12px"}}>{resetEmp&&initials(resetEmp.name)}</div>
+                <h2 style={{color:"#1a2e38",fontSize:"18px",margin:"0 0 6px"}}>Code envoyé !</h2>
+                <p style={{color:"#94B4C8",fontSize:"13px",margin:0}}>Vérifiez votre email <strong>{resetEmp?.email}</strong></p>
+              </div>
+              <input type="text" value={resetCodeInput} onChange={e=>{setResetCodeInput(e.target.value);setResetError("");}}
+                placeholder="Entrez le code à 6 chiffres"
+                style={{width:"100%",padding:"12px",border:`1px solid ${resetError?"#E85D75":"#E2DDD6"}`,borderRadius:"10px",fontSize:"18px",fontFamily:"monospace",boxSizing:"border-box",outline:"none",marginBottom:"10px",textAlign:"center",letterSpacing:"6px"}} />
+              {resetError&&<div style={{color:"#E85D75",fontSize:"13px",marginBottom:"10px"}}>{resetError}</div>}
+              <button onClick={confirmResetCode}
+                style={{width:"100%",padding:"13px",background:color,color:"white",border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit",marginBottom:"10px"}}>
+                Valider le code
+              </button>
+              <button onClick={async()=>{setResetCodeInput("");setResetError("");await sendResetCode(resetEmp);}}
+                style={{width:"100%",padding:"10px",background:"none",color:"#94B4C8",border:"1px solid #E2DDD6",borderRadius:"10px",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>
+                Renvoyer le code
+              </button>
+            </>
+          )}
+
+          {resetStep==="newpw" && (
+            <>
+              <div style={{textAlign:"center",marginBottom:"24px"}}>
+                <h2 style={{color:"#1a2e38",fontSize:"18px",margin:"0 0 6px"}}>Nouveau mot de passe</h2>
+                <p style={{color:"#94B4C8",fontSize:"13px",margin:0}}>Choisissez un nouveau mot de passe</p>
+              </div>
+              {[["new1","Nouveau mot de passe"],["new2","Confirmer"]].map(([f,l])=>(
+                <div key={f} style={{marginBottom:"12px"}}>
+                  <label style={{display:"block",fontSize:"13px",fontWeight:"600",color:"#5A7A8A",marginBottom:"6px"}}>{l}</label>
+                  <input type="password" value={resetNewPw[f]} onChange={e=>{setResetNewPw({...resetNewPw,[f]:e.target.value});setResetError("");}}
+                    style={{width:"100%",padding:"12px",border:`1px solid ${resetError?"#E85D75":"#E2DDD6"}`,borderRadius:"10px",fontSize:"15px",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}} />
+                </div>
+              ))}
+              {resetError&&<div style={{color:"#E85D75",fontSize:"13px",marginBottom:"10px"}}>{resetError}</div>}
+              {resetSuccess&&<div style={{color:"#16A34A",fontSize:"13px",marginBottom:"10px",fontWeight:"600"}}>✅ Mot de passe modifié !</div>}
+              <button onClick={confirmNewPassword}
+                style={{width:"100%",padding:"13px",background:color,color:"white",border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit"}}>
+                Confirmer
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if(view==="employee"&&!selEmp&&pendingLogin){
     const i=empIdx(pendingLogin.name);
     const color=EMPLOYEE_COLORS[i];
@@ -486,6 +623,10 @@ export default function App() {
             Se souvenir de moi
           </label>
           <button onClick={tryLogin} style={{width:"100%",padding:"13px",background:color,color:"white",border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit"}}>Se connecter</button>
+          <button onClick={()=>{setPendingLogin(null);setResetEmp(pendingLogin);setResetStep("choose");}}
+            style={{width:"100%",marginTop:"10px",padding:"10px",background:"none",color:"#94B4C8",border:"none",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>
+            Mot de passe oublié ?
+          </button>
         </div>
       </div>
     );
