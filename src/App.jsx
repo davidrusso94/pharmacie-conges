@@ -159,6 +159,8 @@ export default function App() {
   const [soldesManuel,setSoldesManuel] = useState({});
   const [activeTab,setActiveTab]     = useState("submit");
   const [mgrTab,setMgrTab]           = useState("requests");
+  const [empCalMonth,setEmpCalMonth]   = useState(new Date().getMonth());
+  const [empCalYear,setEmpCalYear]     = useState(new Date().getFullYear());
   const [calMonth,setCalMonth]       = useState(new Date().getMonth());
   const [calYear,setCalYear]         = useState(new Date().getFullYear());
   const [recapMonth,setRecapMonth]   = useState(new Date().getMonth());
@@ -662,7 +664,7 @@ export default function App() {
 
         <div style={{maxWidth:"600px",margin:"0 auto",padding:"24px"}}>
           <div style={{display:"flex",gap:"4px",background:"white",borderRadius:"12px",padding:"4px",marginBottom:"22px",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",overflowX:"auto"}}>
-            {[["submit","✏️ Demander"],["my-requests","📋 Historique"],["change-pw","🔑 Mot de passe"]].map(([tab,label])=>(
+            {[["submit","✏️ Demander"],["my-requests","📋 Historique"],["calendar","📅 Calendrier"],["change-pw","🔑 Mot de passe"]].map(([tab,label])=>(
               <button key={tab} onClick={()=>setActiveTab(tab)}
                 style={{flex:1,padding:"10px",border:"none",borderRadius:"8px",cursor:"pointer",fontSize:"13px",fontWeight:"600",fontFamily:"inherit",background:activeTab===tab?color:"transparent",color:activeTab===tab?"white":"#6B8A99",whiteSpace:"nowrap"}}>
                 {label}
@@ -747,6 +749,53 @@ export default function App() {
                   );
                 })}
               </div>
+          )}
+
+          {activeTab==="calendar"&&(
+            <div style={{background:"white",borderRadius:"16px",padding:"20px",boxShadow:"0 2px 12px rgba(0,0,0,0.06)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px",flexWrap:"wrap",gap:"10px"}}>
+                <h3 style={{margin:0,color:"#1a2e38",fontSize:"16px"}}>Absences approuvées</h3>
+                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                  <button onClick={()=>{const d=new Date(empCalYear,empCalMonth-1);setEmpCalMonth(d.getMonth());setEmpCalYear(d.getFullYear());}} style={{background:"#F5F3EF",border:"none",borderRadius:"8px",padding:"5px 10px",cursor:"pointer",fontSize:"16px"}}>‹</button>
+                  <span style={{fontWeight:"700",color:"#1a2e38",minWidth:"120px",textAlign:"center",fontSize:"13px"}}>{MONTH_NAMES[empCalMonth]} {empCalYear}</span>
+                  <button onClick={()=>{const d=new Date(empCalYear,empCalMonth+1);setEmpCalMonth(d.getMonth());setEmpCalYear(d.getFullYear());}} style={{background:"#F5F3EF",border:"none",borderRadius:"8px",padding:"5px 10px",cursor:"pointer",fontSize:"16px"}}>›</button>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px",marginBottom:"2px"}}>
+                {["L","M","M","J","V","S","D"].map((d,i)=>(
+                  <div key={i} style={{textAlign:"center",fontSize:"11px",fontWeight:"700",color:"#94B4C8",padding:"3px"}}>{d}</div>
+                ))}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:"2px"}}>
+                {(()=>{
+                  const fd=new Date(empCalYear,empCalMonth,1).getDay();
+                  const off=fd===0?6:fd-1;
+                  const dim=new Date(empCalYear,empCalMonth+1,0).getDate();
+                  const feries=getFeries(empCalYear);
+                  const cells=[];
+                  for(let i=0;i<off;i++) cells.push(<div key={`e${i}`}/>);
+                  for(let day=1;day<=dim;day++){
+                    const dateStr=`${empCalYear}-${String(empCalMonth+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+                    const abs=requests.filter(r=>r.status==="approved"&&r.start_date<=dateStr&&r.end_date>=dateStr);
+                    const today=new Date();
+                    const isToday=today.getDate()===day&&today.getMonth()===empCalMonth&&today.getFullYear()===empCalYear;
+                    const isFerie=feries.has(dateStr);
+                    const isMe=abs.some(r=>r.employee===selEmp.name);
+                    cells.push(
+                      <div key={day} style={{minHeight:"44px",padding:"2px",borderRadius:"6px",background:isFerie?"#F0F4F8":isToday?"#EBF5FB":abs.length>0?"#FFF9F0":"#F9F8F6",border:isMe?`2px solid ${color}`:(isToday?"1px solid #2980B9":"1px solid transparent")}}>
+                        <div style={{fontSize:"10px",fontWeight:isToday?"700":"500",color:isFerie?"#94B4C8":isToday?"#2980B9":"#1a2e38",marginBottom:"2px"}}>{day}</div>
+                        {abs.slice(0,3).map(a=>(<div key={a.id} style={{width:"100%",height:"4px",borderRadius:"2px",background:empColor(a.employee),marginBottom:"1px"}} title={a.employee}/>))}
+                        {abs.length>3&&<div style={{fontSize:"8px",color:"#94B4C8"}}>+{abs.length-3}</div>}
+                      </div>
+                    );
+                  }
+                  return cells;
+                })()}
+              </div>
+              <div style={{marginTop:"12px",display:"flex",flexWrap:"wrap",gap:"8px"}}>
+                {employees.map((emp,i)=>(<div key={emp.name} style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"11px",color:emp.name===selEmp.name?"#1a2e38":"#5A7A8A",fontWeight:emp.name===selEmp.name?"700":"400"}}><div style={{width:"10px",height:"10px",borderRadius:"2px",background:EMPLOYEE_COLORS[i]}}/>{emp.name}{emp.name===selEmp.name?" (moi)":""}</div>))}
+              </div>
+            </div>
           )}
 
           {activeTab==="change-pw"&&(
